@@ -220,6 +220,27 @@ def wecom_callback():
         CALLBACK_LOG.append({"ts": datetime.now().isoformat(), "type": "POST", "body": f"ERROR: {e}"})
     return "success", 200
 
+@app.route("/create_group")
+def create_group():
+    """通过API创建群聊，把应用加进去"""
+    try:
+        t = wecom_token()
+        # 1. Get current user ID
+        r = requests.get("https://qyapi.weixin.qq.com/cgi-bin/user/list",
+            params={"access_token": t, "department_id": 1, "fetch_child": 1}, timeout=10)
+        users = r.json().get("userlist", [])
+        if not users: return "No users found"
+        uid = users[0]["userid"]
+
+        # 2. Create group chat
+        r2 = requests.post("https://qyapi.weixin.qq.com/cgi-bin/appchat/create",
+            params={"access_token": t},
+            json={"name": "施工日报群", "owner": uid, "userlist": [uid], "chatid": "daily_report_grp"},
+            timeout=10)
+        return f"Create group: {r2.json()}"
+    except Exception as e:
+        return f"Error: {e}"
+
 @app.route("/debug")
 def debug():
     """查看最近收到的回调"""
