@@ -222,22 +222,38 @@ def wecom_callback():
 
 @app.route("/create_group")
 def create_group():
-    """通过API创建群聊，把应用加进去"""
+    """通过API创建群聊——需要至少2个成员"""
     try:
         t = wecom_token()
-        # 1. Get current user ID
         r = requests.get("https://qyapi.weixin.qq.com/cgi-bin/user/list",
             params={"access_token": t, "department_id": 1, "fetch_child": 1}, timeout=10)
         users = r.json().get("userlist", [])
-        if not users: return "No users found"
-        uid = users[0]["userid"]
+        result = []
+        result.append(f"Found {len(users)} users")
 
-        # 2. Create group chat
-        r2 = requests.post("https://qyapi.weixin.qq.com/cgi-bin/appchat/create",
-            params={"access_token": t},
-            json={"name": "施工日报群", "owner": uid, "userlist": [uid], "chatid": "daily_report_grp"},
-            timeout=10)
-        return f"Create group: {r2.json()}"
+        if len(users) >= 2:
+            uid1 = users[0]["userid"]
+            uid2 = users[1]["userid"]
+            r2 = requests.post("https://qyapi.weixin.qq.com/cgi-bin/appchat/create",
+                params={"access_token": t},
+                json={"name": "施工日报群", "owner": uid1, "userlist": [uid1, uid2], "chatid": "daily_report_grp"},
+                timeout=10)
+            result.append(f"Group: {r2.json()}")
+            return "\n".join(result)
+
+        # If only 1 user, try sending direct message via API
+        if len(users) == 1:
+            uid = users[0]["userid"]
+            r3 = requests.post("https://qyapi.weixin.qq.com/cgi-bin/message/send",
+                params={"access_token": t},
+                json={"touser": uid, "msgtype": "text", "agentid": AGENT_ID,
+                      "text": {"content": "Reply to this message with your work content!"}},
+                timeout=10)
+            result.append(f"Direct msg: {r3.json()}")
+            return "\n".join(result)
+
+        return f"No users"
+
     except Exception as e:
         return f"Error: {e}"
 
