@@ -231,6 +231,14 @@ def wecom_callback():
         logger.error(f"Callback ERR: {e}")
     return "success", 200
 
+@app.route("/test")
+def test_wecom():
+    try:
+        t = wecom_token()
+        return f"Token OK: {t[:10]}..."
+    except Exception as e:
+        return f"Token FAIL: {e}"
+
 @app.route("/")
 def index():
     return "OK - Daily Report Bot"
