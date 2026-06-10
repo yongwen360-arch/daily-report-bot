@@ -231,6 +231,16 @@ def wecom_callback():
         logger.error(f"Callback ERR: {e}")
     return "success", 200
 
+@app.route("/myip")
+def my_ip():
+    """检查本机出口IP"""
+    import urllib.request
+    try:
+        ip = urllib.request.urlopen("https://api.ipify.org", timeout=10).read().decode()
+        return f"Outbound IP: {ip}"
+    except Exception as e:
+        return f"IP check failed: {e}"
+
 @app.route("/test")
 def test_wecom():
     try:
