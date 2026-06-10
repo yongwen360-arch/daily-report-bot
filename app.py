@@ -258,9 +258,96 @@ def test_wecom():
     except Exception as e:
         return f"Token FAIL: {e}"
 
+FORM_HTML = """<!DOCTYPE html>
+<html lang="zh"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>施工日报</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;background:#f0f2f5;min-height:100vh}
+.hd{background:#07c160;color:#fff;padding:14px;text-align:center;font-size:17px;font-weight:bold}
+.ct{padding:12px;max-width:480px;margin:0 auto}
+.card{background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.card h3{font-size:14px;color:#333;margin-bottom:8px}
+textarea{width:100%;height:90px;border:1px solid #ddd;border-radius:8px;padding:10px;font-size:15px;font-family:inherit}
+.btn{display:block;width:100%;padding:12px;background:#07c160;color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
+.btn:active{opacity:.8}
+.msg{text-align:center;padding:10px;font-size:14px;display:none}
+.msg.ok{color:#07c160}.msg.err{color:#e33}
+.hist{margin-top:10px}.hist div{padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#666}
+.hist .t{color:#999;font-size:12px}
+</style></head>
+<body>
+<div class="hd">施工日报</div>
+<div class="ct">
+  <div class="card">
+    <h3>今天的工作内容</h3>
+    <textarea id="msg" placeholder="例如：今天5个工人2台挖机，浇筑了30方混凝土，完成了1号楼基础，明天绑钢筋"></textarea>
+    <button class="btn" onclick="submit()">提交</button>
+    <div class="msg" id="result"></div>
+  </div>
+  <div class="hist" id="history"></div>
+</div>
+<script>
+async function submit(){
+  var m=document.getElementById('msg').value.trim();
+  if(m.length<5){showMsg('请写详细一些','err');return}
+  var b=document.querySelector('.btn');b.disabled=true;b.textContent='提交中...';
+  try{
+    var r=await fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})});
+    var d=await r.json();
+    if(d.ok){document.getElementById('msg').value='';showMsg('已记录','ok');loadHistory()}
+    else showMsg(d.error||'失败','err')
+  }catch(e){showMsg('网络错误','err')}
+  b.disabled=false;b.textContent='提交';
+}
+function showMsg(t,c){var e=document.getElementById('result');e.textContent=t;e.className='msg '+c;e.style.display='block';setTimeout(function(){e.style.display='none'},2000)}
+async function loadHistory(){
+  try{
+    var r=await fetch('/history');var d=await r.json();
+    var h=document.getElementById('history');
+    if(!d.items.length){h.innerHTML='<div style=text-align:center;color:#999;padding:20px>今天还没有记录</div>';return}
+    h.innerHTML=d.items.map(function(i){return '<div><span class=t>'+i.time+'</span> '+i.text+'</div>'}).join('')
+  }catch(e){}
+}
+loadHistory();
+</script>
+</body></html>"""
+
 @app.route("/")
 def index():
-    return "OK - Daily Report Bot"
+    return FORM_HTML
+
+@app.route("/submit", methods=["POST"])
+def submit():
+    data = request.get_json()
+    msg = data.get("message", "").strip()
+    if len(msg) < 5:
+        return {"ok": False, "error": "内容太短"}
+    s = extract(msg)
+    logger.info(f"Extract: {s}")
+    if not s or not any(s.values()):
+        return {"ok": False, "error": "未识别施工信息，请说详细些"}
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO daily_logs(date,chat_id,user_name,raw_message,workers,machines,materials,completed,tomorrow_plan,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (date.today().isoformat(), "", "", msg,
+         s.get("workers", ""), s.get("machines", ""),
+         s.get("materials", ""), s.get("completed", ""),
+         s.get("tomorrow_plan", ""), s.get("notes", ""),
+         datetime.now().isoformat()))
+    conn.commit(); conn.close()
+    send_wecom(f"New: {s.get('completed', msg[:40])}")
+    return {"ok": True}
+
+@app.route("/history")
+def history():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT created_at, completed, raw_message FROM daily_logs WHERE date=? ORDER BY id DESC LIMIT 10",
+        (date.today().isoformat(),)).fetchall()
+    conn.close()
+    return {"items": [{"time": r[0][11:16], "text": r[1] or r[2][:40]} for r in rows]}
 
 if __name__ == "__main__":
     get_db()
