@@ -231,6 +231,15 @@ def wecom_callback():
         logger.error(f"Callback ERR: {e}")
     return "success", 200
 
+@app.route("/send_test")
+def send_test():
+    """测试向企微发消息"""
+    try:
+        send_wecom("Test message from Render - daily report bot is online!")
+        return "Send OK"
+    except Exception as e:
+        return f"Send FAIL: {e}"
+
 @app.route("/myip")
 def my_ip():
     """检查本机出口IP"""
